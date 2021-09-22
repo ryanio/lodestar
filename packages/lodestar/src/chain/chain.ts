@@ -144,8 +144,6 @@ export class BeaconChain implements IBeaconChain {
         eth1,
         db,
         forkChoice,
-        stateCache,
-        checkpointStateCache,
         emitter,
         config,
         logger,

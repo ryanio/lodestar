@@ -14,21 +14,19 @@ import {IMetrics} from "../../metrics";
 import {IEth1ForBlockProduction} from "../../eth1";
 import {IExecutionEngine} from "../../executionEngine";
 import {IBeaconDb} from "../../db";
-import {CheckpointStateCache, StateContextCache, toCheckpointHex} from "../stateCache";
+import {toCheckpointHex} from "../stateCache";
 import {ChainEvent} from "../emitter";
 import {ChainEventEmitter} from "../emitter";
 import {getCheckpointFromState} from "./utils/checkpoint";
 import {PendingEvents} from "./utils/pendingEvents";
 import {FullyVerifiedBlock} from "./types";
-import {ZERO_HASH_HEX} from "../../constants";
+import {IStateRegenerator} from "../regen";
 
 export type ImportBlockModules = {
   db: IBeaconDb;
   eth1: IEth1ForBlockProduction;
   forkChoice: IForkChoice;
-  stateCache: StateContextCache;
-  checkpointStateCache: CheckpointStateCache;
-  executionEngine: IExecutionEngine;
+  regen: IStateRegenerator;
   emitter: ChainEventEmitter;
   config: IChainForkConfig;
   logger: ILogger;
@@ -127,10 +125,8 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
   // - Write block and state to hot db
   // - Write block and state to snapshot_cache
   if (block.message.slot % SLOTS_PER_EPOCH === 0) {
-    // Cache state to preserve epoch transition work
     const checkpointState = postState.clone();
     const cp = getCheckpointFromState(checkpointState);
-    chain.checkpointStateCache.add(cp, checkpointState);
     pendingEvents.push(ChainEvent.checkpoint, cp, checkpointState);
   }
 
@@ -181,7 +177,7 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
   // TODO: Move internal emitter onBlock() code here
   // MUST happen before any other block is processed
   // This adds the state necessary to process the next block
-  chain.stateCache.add(postState);
+  chain.regen.addPostState(postState);
   await chain.db.block.add(block);
 
   // - head_tracker.register_block(block_root, parent_root, slot)
