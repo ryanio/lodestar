@@ -99,9 +99,6 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
   const prevFinalizedEpoch = chain.forkChoice.getFinalizedCheckpoint().epoch;
   chain.forkChoice.onBlock(block.message, postState, onBlockPrecachedData);
 
-  // - Register state and block to the validator monitor
-  // TODO
-
   // - For each attestation
   //   - Get indexed attestation
   //   - Register attestation with fork-choice
@@ -122,14 +119,6 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
     }
   }
 
-  // - Write block and state to hot db
-  // - Write block and state to snapshot_cache
-  if (block.message.slot % SLOTS_PER_EPOCH === 0) {
-    const checkpointState = postState.clone();
-    const cp = getCheckpointFromState(checkpointState);
-    pendingEvents.push(ChainEvent.checkpoint, cp, checkpointState);
-  }
-
   // Emit ChainEvent.forkChoiceHead event
   const oldHead = chain.forkChoice.getHead();
   chain.forkChoice.updateHead();
@@ -145,6 +134,11 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
       pendingEvents.push(ChainEvent.forkChoiceReorg, newHead, oldHead, distance);
       chain.metrics?.forkChoiceReorg.inc();
     }
+
+    // Set head state in regen. May trigger async regen if the state is not in a memory cache
+    chain.regen.setHead(newHead, postState).catch((e) => {
+      chain.logger.error("Error setting head state", {slot: newHead.slot, stateRoot: newHead.stateRoot}, e);
+    });
   }
 
   // NOTE: forkChoice.fsStore.finalizedCheckpoint MUST only change is response to an onBlock event
@@ -177,15 +171,23 @@ export async function importBlock(chain: ImportBlockModules, fullyVerifiedBlock:
   // TODO: Move internal emitter onBlock() code here
   // MUST happen before any other block is processed
   // This adds the state necessary to process the next block
+  // - Write block and state to hot db
+  // - Write block and state to snapshot_cache
   chain.regen.addPostState(postState);
   await chain.db.block.add(block);
 
   // - head_tracker.register_block(block_root, parent_root, slot)
-
   // - Send event after everything is done
 
   // Emit all events at once after fully completing importBlock()
+  // Emit ChainEvent.block event
   chain.emitter.emit(ChainEvent.block, block, postState);
+
+  if (block.message.slot % SLOTS_PER_EPOCH === 0) {
+    const checkpointState = postState.clone();
+    const cp = getCheckpointFromState(checkpointState);
+    chain.emitter.emit(ChainEvent.checkpoint, cp, checkpointState);
+  }
   pendingEvents.emit();
 }
 
