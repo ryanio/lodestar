@@ -6,7 +6,7 @@ import {allForks, Number64, Root, Slot, ssz, Uint16, Uint64} from "@chainsafe/lo
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
 import {CachedBeaconState, createCachedBeaconState} from "@chainsafe/lodestar-beacon-state-transition";
 import {phase0} from "@chainsafe/lodestar-beacon-state-transition";
-import {CheckpointWithHex, ForkChoice, IForkChoice, IProtoBlock} from "@chainsafe/lodestar-fork-choice";
+import {CheckpointWithHex, IForkChoice, IProtoBlock} from "@chainsafe/lodestar-fork-choice";
 import {LightClientUpdater} from "@chainsafe/lodestar-light-client/server";
 
 import {ChainEventEmitter, IBeaconChain} from "../../../../src/chain";
@@ -111,12 +111,7 @@ export class MockBeaconChain implements IBeaconChain {
       signal: this.abortController.signal,
     });
     this.lightclientUpdater = new LightClientUpdater(db);
-    this.lightClientIniter = new LightClientIniter({
-      config: this.config,
-      db: db,
-      forkChoice: this.forkChoice as ForkChoice,
-      stateCache: this.stateCache,
-    });
+    this.lightClientIniter = new LightClientIniter(config, db, this.forkChoice, this.regen);
   }
 
   getHeadState(): CachedBeaconState<allForks.BeaconState> {

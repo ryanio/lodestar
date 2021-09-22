@@ -9,7 +9,6 @@ import {IExecutionEngine} from "../executionEngine";
 import {IBeaconClock} from "./clock/interface";
 import {ChainEventEmitter} from "./emitter";
 import {IStateRegenerator} from "./regen";
-import {StateContextCache, CheckpointStateCache} from "./stateCache";
 import {IBlsVerifier} from "./bls";
 import {
   SeenAttesters,
@@ -45,8 +44,6 @@ export interface IBeaconChain {
   forkChoice: IForkChoice;
   clock: IBeaconClock;
   emitter: ChainEventEmitter;
-  stateCache: StateContextCache;
-  checkpointStateCache: CheckpointStateCache;
   regen: IStateRegenerator;
   lightclientUpdater: LightClientUpdater;
   lightClientIniter: LightClientIniter;

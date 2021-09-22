@@ -4,17 +4,9 @@ import {phase0, ssz} from "@chainsafe/lodestar-types";
 import {IChainForkConfig} from "@chainsafe/lodestar-config";
 import {computeEpochAtSlot, computeSyncPeriodAtEpoch} from "@chainsafe/lodestar-beacon-state-transition";
 import {allForks} from "@chainsafe/lodestar-beacon-state-transition";
-import {ForkChoice} from "@chainsafe/lodestar-fork-choice";
+import {IForkChoice} from "@chainsafe/lodestar-fork-choice";
 import {IBeaconDb} from "../../db";
-import {StateContextCache} from "../stateCache";
-import {intToBytes} from "@chainsafe/lodestar-utils";
-
-interface ILightClientIniterModules {
-  config: IChainForkConfig;
-  db: IBeaconDb;
-  forkChoice: ForkChoice;
-  stateCache: StateContextCache;
-}
+import {IStateRegenerator} from "../regen";
 
 /* paths needed to bootstrap the light client */
 export const stateProofPaths = [
@@ -33,17 +25,12 @@ const syncProofLeavesLength = SYNC_COMMITTEE_SIZE * 2 + 2;
  * Compute and cache "init" proofs as the chain advances
  */
 export class LightClientIniter {
-  private readonly config: IChainForkConfig;
-  private readonly db: IBeaconDb;
-  private readonly forkChoice: ForkChoice;
-  private readonly stateCache: StateContextCache;
-
-  constructor(modules: ILightClientIniterModules) {
-    this.config = modules.config;
-    this.db = modules.db;
-    this.forkChoice = modules.forkChoice;
-    this.stateCache = modules.stateCache;
-  }
+  constructor(
+    private readonly config: IChainForkConfig,
+    private readonly db: IBeaconDb,
+    private readonly forkChoice: IForkChoice,
+    private readonly regen: IStateRegenerator
+  ) {}
 
   /**
    * To be called in API route GET /eth/v1/lightclient/init_proof/:blockRoot
@@ -101,9 +88,9 @@ export class LightClientIniter {
 
     // fetch the state at the block header, this state will be used to create the init proof
     const checkpointStateRoot = checkpointBlockSummary.stateRoot;
-    const checkpointState = this.stateCache.get(checkpointStateRoot);
+    const checkpointState = this.regen.getStateSync(checkpointStateRoot);
     if (!checkpointState) {
-      throw new Error("State not found in cache");
+      throw new Error(`State ${checkpointStateRoot} not found in cache`);
     }
 
     // state proof
