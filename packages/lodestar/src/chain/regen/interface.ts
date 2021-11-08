@@ -187,12 +187,14 @@ type ShufflingCheckpoint = {
 };
 
 export class StateCacheRegen implements IStateCacheRegen {
-  private head: IProtoBlock;
+  private head: IProtoBlock & {prevTargetRoot: RootHex};
   private headState: CachedBeaconState<allForks.BeaconState>;
   private headShufflingCheckpoint: ShufflingCheckpoint;
   private forkChoice: IForkChoice;
   private stateCache: StateContextCache;
   private checkpointStateCache: CheckpointStateCache;
+
+  private stateByShufflingCheckpoint: Map<Epoch, Map<RootHex, WeakRef<CachedBeaconState<allForks.BeaconState>>>>;
 
   getHeadState(): CachedBeaconState<allForks.BeaconState> {
     return this.headState;
@@ -261,7 +263,24 @@ export class StateCacheRegen implements IStateCacheRegen {
   private async getStateWithShufflingCheckpoint(
     shufflingCheckpoint: ShufflingCheckpoint
   ): Promise<CachedBeaconState<allForks.BeaconState>> {
-    this.headShufflingCheckpoint.
+    if (
+      shufflingCheckpoint.epoch === this.headShufflingCheckpoint.epoch &&
+      shufflingCheckpoint.dependantRoot === this.headShufflingCheckpoint.dependantRoot
+    ) {
+      return this.headState;
+    }
+
+    const stateWeakRef = this.stateByShufflingCheckpoint
+      .get(shufflingCheckpoint.epoch)
+      ?.get(shufflingCheckpoint.dependantRoot);
+    if (stateWeakRef) {
+      const state = stateWeakRef.deref();
+      if (state) {
+        return state;
+      } else {
+        this.stateByShufflingCheckpoint.get(shufflingCheckpoint.epoch)?.delete(shufflingCheckpoint.dependantRoot);
+      }
+    }
   }
 }
 
