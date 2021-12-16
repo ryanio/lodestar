@@ -71,6 +71,10 @@ export function getLodestarApi({
       }
     },
 
+    async subscribeAllSubnets() {
+      network.subscribeAllSubnets();
+    },
+
     async getLatestWeakSubjectivityCheckpointEpoch() {
       const state = chain.getHeadState();
       return {data: allForks.getLatestWeakSubjectivityCheckpointEpoch(config, state)};

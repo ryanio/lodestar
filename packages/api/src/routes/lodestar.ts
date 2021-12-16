@@ -59,6 +59,8 @@ export type Api = {
   getWtfNode(): Promise<{data: string}>;
   /** Trigger to write a heapdump to disk at `dirpath`. May take > 1min */
   writeHeapdump(dirpath?: string): Promise<{data: {filepath: string}}>;
+  /** Subscribe to all subnets */
+  subscribeAllSubnets(): Promise<void>;
   /** TODO: description */
   getLatestWeakSubjectivityCheckpointEpoch(): Promise<{data: Epoch}>;
   /** TODO: description */
@@ -93,6 +95,7 @@ export type Api = {
 export const routesData: RoutesData<Api> = {
   getWtfNode: {url: "/eth/v1/lodestar/wtfnode", method: "GET"},
   writeHeapdump: {url: "/eth/v1/lodestar/writeheapdump", method: "POST"},
+  subscribeAllSubnets: {url: "/eth/v1/lodestar/subscribeAllSubnets", method: "POST"},
   getLatestWeakSubjectivityCheckpointEpoch: {url: "/eth/v1/lodestar/ws_epoch", method: "GET"},
   getSyncChainsDebugState: {url: "/eth/v1/lodestar/sync-chains-debug-state", method: "GET"},
   getGossipQueueItems: {url: "/eth/v1/lodestar/gossip-queue-items/:gossipType", method: "GET"},
@@ -110,6 +113,7 @@ export const routesData: RoutesData<Api> = {
 export type ReqTypes = {
   getWtfNode: ReqEmpty;
   writeHeapdump: {query: {dirpath?: string}};
+  subscribeAllSubnets: ReqEmpty;
   getLatestWeakSubjectivityCheckpointEpoch: ReqEmpty;
   getSyncChainsDebugState: ReqEmpty;
   getGossipQueueItems: {params: {gossipType: string}};
@@ -132,6 +136,7 @@ export function getReqSerializers(): ReqSerializers<Api, ReqTypes> {
       parseReq: ({query}) => [query.dirpath],
       schema: {query: {dirpath: Schema.String}},
     },
+    subscribeAllSubnets: reqEmpty,
     getLatestWeakSubjectivityCheckpointEpoch: reqEmpty,
     getSyncChainsDebugState: reqEmpty,
     getGossipQueueItems: {

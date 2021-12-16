@@ -220,6 +220,25 @@ export class Network implements INetwork {
   }
 
   /**
+   * Subscribe to all subnets.
+   */
+  subscribeAllSubnets(): void {
+    this.opts.subscribeAllSubnets = true;
+
+    const currentEpoch = computeEpochAtSlot(this.chain.forkChoice.getHead().slot);
+    for (const fork of getActiveForks(this.config, currentEpoch)) {
+      for (let subnet = 0; subnet < ATTESTATION_SUBNET_COUNT; subnet++) {
+        this.gossip.subscribeTopic({type: GossipType.beacon_attestation, fork, subnet});
+      }
+      for (let subnet = 0; subnet < SYNC_COMMITTEE_SUBNET_COUNT; subnet++) {
+        this.gossip.subscribeTopic({type: GossipType.sync_committee, fork, subnet});
+      }
+    }
+
+    this.logger.info("Subscribed to all subnets");
+  }
+
+  /**
    * Unsubscribe from all gossip events. Safe to call multiple times
    */
   unsubscribeGossipCoreTopics(): void {

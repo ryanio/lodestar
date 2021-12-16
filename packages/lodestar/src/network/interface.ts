@@ -42,6 +42,7 @@ export interface INetwork {
 
   // Gossip handler
   subscribeGossipCoreTopics(): void;
+  subscribeAllSubnets(): void;
   unsubscribeGossipCoreTopics(): void;
   isSubscribedToGossipCoreTopics(): boolean;
 
