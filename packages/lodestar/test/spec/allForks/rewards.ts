@@ -2,13 +2,21 @@ import fs from "node:fs";
 import {join} from "node:path";
 import {expect} from "chai";
 import {describeDirectorySpecTest} from "@chainsafe/lodestar-spec-test-util";
-import {altair, phase0, allForks, CachedBeaconStatePhase0} from "@chainsafe/lodestar-beacon-state-transition";
-import {TreeBacked, VectorType} from "@chainsafe/ssz";
+import {
+  altair,
+  phase0,
+  CachedBeaconStatePhase0,
+  BeaconStateAllForks,
+  BeaconStateAltair,
+  beforeProcessEpoch,
+} from "@chainsafe/lodestar-beacon-state-transition";
 import {ACTIVE_PRESET, ForkName} from "@chainsafe/lodestar-params";
+import {VectorCompositeType} from "@chainsafe/ssz";
 import {ssz} from "@chainsafe/lodestar-types";
+import {createCachedBeaconStateTest} from "../../utils/cachedBeaconState";
 import {SPEC_TEST_LOCATION} from "../specTestVersioning";
 import {IBaseSpecTest} from "../type";
-import {inputTypeSszTreeBacked} from "../util";
+import {inputTypeSszTreeViewDU} from "../util";
 import {getConfig} from "./util";
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -22,10 +30,7 @@ export function rewards(fork: ForkName): void {
   }
 }
 
-const Deltas = new VectorType<bigint[]>({
-  elementType: ssz.altair.BeaconState.fields.balances,
-  length: 2,
-});
+const deltasType = new VectorCompositeType(ssz.phase0.Balances, 2);
 
 export function rewardsPhase0(fork: ForkName): void {
   const rootDir = join(SPEC_TEST_LOCATION, `tests/${ACTIVE_PRESET}/${fork}/rewards`);
@@ -35,19 +40,19 @@ export function rewardsPhase0(fork: ForkName): void {
       join(rootDir, `${testDir}/pyspec_tests`),
       (testcase) => {
         const config = getConfig(fork);
-        const wrappedState = allForks.createCachedBeaconState(config, testcase.pre as TreeBacked<allForks.BeaconState>);
-        const epochProcess = allForks.beforeProcessEpoch(wrappedState);
+        const wrappedState = createCachedBeaconStateTest(testcase.pre, config);
+        const epochProcess = beforeProcessEpoch(wrappedState);
         return phase0.getAttestationDeltas(wrappedState as CachedBeaconStatePhase0, epochProcess);
       },
       {
-        inputTypes: inputTypeSszTreeBacked,
+        inputTypes: inputTypeSszTreeViewDU,
         sszTypes: {
           pre: ssz[fork].BeaconState,
-          source_deltas: Deltas,
-          target_deltas: Deltas,
-          head_deltas: Deltas,
-          inclusion_delay_deltas: Deltas,
-          inactivity_penalty_deltas: Deltas,
+          source_deltas: deltasType,
+          target_deltas: deltasType,
+          head_deltas: deltasType,
+          inclusion_delay_deltas: deltasType,
+          inactivity_penalty_deltas: deltasType,
         },
         timeout: 100000000,
         getExpected: (testCase) =>
@@ -74,8 +79,8 @@ export function rewardsAltair(fork: ForkName): void {
       join(rootDir, `${testDir}/pyspec_tests`),
       (testcase) => {
         const config = getConfig(fork);
-        const state = allForks.createCachedBeaconState(config, testcase.pre as TreeBacked<altair.BeaconState>);
-        const epochProcess = allForks.beforeProcessEpoch(state);
+        const state = createCachedBeaconStateTest(testcase.pre as BeaconStateAltair, config);
+        const epochProcess = beforeProcessEpoch(state);
         // To debug this test and get granular results you can tweak inputs to get more granular results
         //
         // TIMELY_HEAD_FLAG_INDEX -> FLAG_PREV_HEAD_ATTESTER_OR_UNSLASHED
@@ -91,13 +96,13 @@ export function rewardsAltair(fork: ForkName): void {
         return altair.getRewardsAndPenalties(state, epochProcess);
       },
       {
-        inputTypes: inputTypeSszTreeBacked,
+        inputTypes: inputTypeSszTreeViewDU,
         sszTypes: {
           pre: ssz[fork].BeaconState,
-          head_deltas: Deltas,
-          source_deltas: Deltas,
-          target_deltas: Deltas,
-          inactivity_penalty_deltas: Deltas,
+          head_deltas: deltasType,
+          source_deltas: deltasType,
+          target_deltas: deltasType,
+          inactivity_penalty_deltas: deltasType,
         },
         getExpected: (testCase) =>
           sumDeltas([
@@ -117,7 +122,7 @@ export function rewardsAltair(fork: ForkName): void {
 type Deltas = [number[], number[]];
 
 interface RewardTestCasePhase0 extends IBaseSpecTest {
-  pre: altair.BeaconState;
+  pre: BeaconStateAllForks;
   source_deltas: Deltas;
   target_deltas: Deltas;
   head_deltas: Deltas;
@@ -126,7 +131,7 @@ interface RewardTestCasePhase0 extends IBaseSpecTest {
 }
 
 interface RewardTestCaseAltair extends IBaseSpecTest {
-  pre: altair.BeaconState;
+  pre: BeaconStateAllForks;
   head_deltas: Deltas;
   source_deltas: Deltas;
   target_deltas: Deltas;

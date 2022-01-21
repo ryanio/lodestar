@@ -1,9 +1,9 @@
 import {routes} from "@chainsafe/lodestar-api";
 // eslint-disable-next-line no-restricted-imports
 import {Api as IBeaconStateApi} from "@chainsafe/lodestar-api/lib/routes/beacon/state";
-import {allForks, altair} from "@chainsafe/lodestar-types";
-import {readonlyValues} from "@chainsafe/ssz";
 import {
+  BeaconStateAllForks,
+  CachedBeaconStateAllForks,
   CachedBeaconStateAltair,
   computeEpochAtSlot,
   getCurrentEpoch,
@@ -12,7 +12,6 @@ import {ApiError} from "../../errors";
 import {ApiModules} from "../../types";
 import {
   filterStateValidatorsByStatuses,
-  getEpochBeaconCommittees,
   getStateValidatorIndex,
   getValidatorStatus,
   resolveStateId,
@@ -20,14 +19,14 @@ import {
 } from "./utils";
 
 export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" | "config" | "db">): IBeaconStateApi {
-  async function getState(stateId: routes.beacon.StateId): Promise<allForks.BeaconState> {
+  async function getState(stateId: routes.beacon.StateId): Promise<BeaconStateAllForks> {
     return await resolveStateId(config, chain, db, stateId);
   }
 
   return {
     async getStateRoot(stateId) {
       const state = await getState(stateId);
-      return {data: config.getForkTypes(state.slot).BeaconState.hashTreeRoot(state)};
+      return {data: state.hashTreeRoot()};
     },
 
     async getStateFork(stateId) {
@@ -50,21 +49,21 @@ export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" 
       const state = await resolveStateId(config, chain, db, stateId);
       const currentEpoch = getCurrentEpoch(state);
       const {validators, balances} = state; // Get the validators sub tree once for all the loop
-      const {pubkey2index} = chain.getHeadState();
+      const {pubkey2index} = chain.getHeadState().epochCtx;
 
       const validatorResponses: routes.beacon.ValidatorResponse[] = [];
       if (filters?.indices) {
         for (const id of filters.indices) {
           const validatorIndex = getStateValidatorIndex(id, state, pubkey2index);
           if (validatorIndex != null) {
-            const validator = validators[validatorIndex];
+            const validator = validators.get(validatorIndex);
             if (filters.statuses && !filters.statuses.includes(getValidatorStatus(validator, currentEpoch))) {
               continue;
             }
             const validatorResponse = toValidatorResponse(
               validatorIndex,
               validator,
-              balances[validatorIndex],
+              balances.get(validatorIndex),
               currentEpoch
             );
             validatorResponses.push(validatorResponse);
@@ -76,18 +75,20 @@ export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" 
         return {data: validatorsByStatus};
       }
 
-      let index = 0;
+      // TODO: This loops over the entire state, it's a DOS vector
+      const validatorsArr = state.validators.getAllReadonlyValues();
+      const balancesArr = state.balances.getAll();
       const resp: routes.beacon.ValidatorResponse[] = [];
-      for (const v of readonlyValues(state.validators)) {
-        resp.push(toValidatorResponse(index, v, balances[index], currentEpoch));
-        index++;
+      for (let i = 0; i < validatorsArr.length; i++) {
+        resp.push(toValidatorResponse(i, validatorsArr[i], balancesArr[i], currentEpoch));
       }
+
       return {data: resp};
     },
 
     async getStateValidator(stateId, validatorId) {
       const state = await resolveStateId(config, chain, db, stateId);
-      const {pubkey2index} = chain.getHeadState();
+      const {pubkey2index} = chain.getHeadState().epochCtx;
 
       const validatorIndex = getStateValidatorIndex(validatorId, state, pubkey2index);
       if (validatorIndex == null) {
@@ -97,8 +98,8 @@ export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" 
       return {
         data: toValidatorResponse(
           validatorIndex,
-          state.validators[validatorIndex],
-          state.balances[validatorIndex],
+          state.validators.get(validatorIndex),
+          state.balances.get(validatorIndex),
           getCurrentEpoch(state)
         ),
       };
@@ -115,31 +116,39 @@ export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" 
             if (state.validators.length <= id) {
               continue;
             }
-            balances.push({index: id, balance: state.balances[id]});
+            balances.push({index: id, balance: state.balances.get(id)});
           } else {
-            const index = headState.pubkey2index.get(id);
+            const index = headState.epochCtx.pubkey2index.get(id);
             if (index != null && index <= state.validators.length) {
-              balances.push({index, balance: state.balances[index]});
+              balances.push({index, balance: state.balances.get(index)});
             }
           }
         }
         return {data: balances};
       }
 
-      const balances = Array.from(readonlyValues(state.balances), (balance, index) => {
-        return {
-          index,
-          balance,
-        };
-      });
-      return {data: balances};
+      // TODO: This loops over the entire state, it's a DOS vector
+      const balancesArr = state.balances.getAll();
+      const resp: routes.beacon.ValidatorBalance[] = [];
+      for (let i = 0; i < balancesArr.length; i++) {
+        resp.push({index: i, balance: balancesArr[i]});
+      }
+      return {data: resp};
     },
 
     async getEpochCommittees(stateId, filters) {
       const state = await resolveStateId(config, chain, db, stateId);
+      const {epochCtx} = state as CachedBeaconStateAllForks;
 
-      const committes = getEpochBeaconCommittees(state, filters?.epoch ?? computeEpochAtSlot(state.slot));
-      const committesFlat = committes.flatMap((slotCommittees, committeeIndex) => {
+      // TODO: resolveStateId may return a (non-cached) BeaconStateAllForks or CachedBeaconStateAllForks
+      if (epochCtx === undefined) {
+        throw new ApiError(400, `No cached state available for stateId: ${stateId}`);
+      }
+
+      // Throws if committee is out of order
+      const {committees} = epochCtx.getShufflingAtEpoch(filters?.epoch ?? epochCtx.epoch);
+
+      const committesFlat = committees.flatMap((slotCommittees, committeeIndex) => {
         if (filters?.index !== undefined && filters.index !== committeeIndex) {
           return [];
         }
@@ -166,7 +175,7 @@ export function getBeaconStateApi({chain, config, db}: Pick<ApiModules, "chain" 
      */
     async getEpochSyncCommittees(stateId, epoch) {
       // TODO: Should pick a state with the provided epoch too
-      const state = (await resolveStateId(config, chain, db, stateId)) as altair.BeaconState;
+      const state = await resolveStateId(config, chain, db, stateId);
 
       // TODO: If possible compute the syncCommittees in advance of the fork and expose them here.
       // So the validators can prepare and potentially attest the first block. Not critical tho, it's very unlikely

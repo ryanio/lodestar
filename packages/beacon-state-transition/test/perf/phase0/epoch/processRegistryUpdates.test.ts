@@ -2,6 +2,8 @@ import {itBench} from "@dapplion/benchmark";
 import {allForks, CachedBeaconStateAllForks} from "../../../../src";
 import {generatePerfTestCachedStatePhase0, numValidators} from "../../util";
 import {StateEpoch} from "../../types";
+import {IEpochProcess} from "../../../../src/types";
+import {beforeProcessEpoch} from "../../../../src/cache/beforeProcessEpoch";
 
 // PERF: Cost 'proportional' to only validators that active + exit. For mainnet conditions:
 // - indicesEligibleForActivationQueue: Maxing deposits triggers 512 validator mutations
@@ -80,10 +82,10 @@ function getRegistryUpdatesTestData(
   lengths: IndicesLengths
 ): {
   state: CachedBeaconStateAllForks;
-  epochProcess: allForks.IEpochProcess;
+  epochProcess: IEpochProcess;
 } {
   const state = generatePerfTestCachedStatePhase0({goBackOneSlot: true});
-  const epochProcess = allForks.beforeProcessEpoch(state);
+  const epochProcess = beforeProcessEpoch(state as CachedBeaconStateAllForks);
 
   epochProcess.indicesToEject = linspace(lengths.indicesToEject);
   epochProcess.indicesEligibleForActivationQueue = linspace(lengths.indicesEligibleForActivationQueue);

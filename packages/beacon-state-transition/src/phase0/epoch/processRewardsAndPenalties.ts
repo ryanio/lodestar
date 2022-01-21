@@ -1,6 +1,6 @@
 import {ForkName} from "@chainsafe/lodestar-params";
 import {processRewardsAndPenaltiesAllForks} from "../../allForks/epoch/processRewardsAndPenalties";
-import {CachedBeaconStatePhase0, CachedBeaconStateAllForks, IEpochProcess} from "../../types";
+import {CachedBeaconStatePhase0, IEpochProcess} from "../../types";
 
 /**
  * Iterate over all validator and compute rewards and penalties to apply to balances.
@@ -9,5 +9,5 @@ import {CachedBeaconStatePhase0, CachedBeaconStateAllForks, IEpochProcess} from 
  * are true, worst case: FLAG_UNSLASHED + FLAG_ELIGIBLE_ATTESTER + FLAG_PREV_*
  */
 export function processRewardsAndPenalties(state: CachedBeaconStatePhase0, epochProcess: IEpochProcess): void {
-  processRewardsAndPenaltiesAllForks(ForkName.phase0, state as CachedBeaconStateAllForks, epochProcess);
+  processRewardsAndPenaltiesAllForks(ForkName.phase0, state, epochProcess);
 }

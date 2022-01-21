@@ -2,8 +2,8 @@
  * @module chain/stateTransition/util
  */
 
-import {hash} from "@chainsafe/ssz";
-import {Epoch, Bytes32, DomainType, allForks, ValidatorIndex} from "@chainsafe/lodestar-types";
+import SHA256 from "@chainsafe/as-sha256";
+import {Epoch, Bytes32, DomainType, ValidatorIndex} from "@chainsafe/lodestar-types";
 import {assert, bytesToBigInt, intToBytes} from "@chainsafe/lodestar-utils";
 import {
   DOMAIN_BEACON_PROPOSER,
@@ -14,27 +14,28 @@ import {
   SHUFFLE_ROUND_COUNT,
   SLOTS_PER_EPOCH,
 } from "@chainsafe/lodestar-params";
-import {IEpochShuffling} from "../allForks";
-import {EffectiveBalanceIncrements} from "../allForks/util/effectiveBalanceIncrements";
+import {BeaconStateAllForks} from "../types";
 import {computeStartSlotAtEpoch} from "./epoch";
+import {EffectiveBalanceIncrements} from "../cache/effectiveBalanceIncrements";
 
 /**
  * Compute proposer indices for an epoch
  */
 export function computeProposers(
-  state: allForks.BeaconState,
-  shuffling: IEpochShuffling,
+  state: BeaconStateAllForks,
+  epoch: Epoch,
+  activeIndices: ValidatorIndex[],
   effectiveBalanceIncrements: EffectiveBalanceIncrements
 ): number[] {
-  const epochSeed = getSeed(state, shuffling.epoch, DOMAIN_BEACON_PROPOSER);
-  const startSlot = computeStartSlotAtEpoch(shuffling.epoch);
+  const epochSeed = getSeed(state, epoch, DOMAIN_BEACON_PROPOSER);
+  const startSlot = computeStartSlotAtEpoch(epoch);
   const proposers = [];
   for (let slot = startSlot; slot < startSlot + SLOTS_PER_EPOCH; slot++) {
     proposers.push(
       computeProposerIndex(
         effectiveBalanceIncrements,
-        shuffling.activeIndices,
-        hash(Buffer.concat([epochSeed, intToBytes(slot, 8)]))
+        activeIndices,
+        SHA256.digest(Buffer.concat([epochSeed, intToBytes(slot, 8)]))
       )
     );
   }
@@ -51,7 +52,9 @@ export function computeProposerIndex(
   indices: ValidatorIndex[],
   seed: Uint8Array
 ): ValidatorIndex {
-  assert.gt(indices.length, 0, "Validator indices must not be empty");
+  if (indices.length === 0) {
+    throw Error("Validator indices must not be empty");
+  }
 
   // TODO: Inline outside this function
   const MAX_RANDOM_BYTE = 2 ** 8 - 1;
@@ -61,7 +64,7 @@ export function computeProposerIndex(
   /* eslint-disable-next-line no-constant-condition */
   while (true) {
     const candidateIndex = indices[computeShuffledIndex(i % indices.length, indices.length, seed)];
-    const randByte = hash(
+    const randByte = SHA256.digest(
       Buffer.concat([
         seed,
         //
@@ -69,7 +72,6 @@ export function computeProposerIndex(
       ])
     )[i % 32];
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const effectiveBalanceIncrement = effectiveBalanceIncrements[candidateIndex];
     if (effectiveBalanceIncrement * MAX_RANDOM_BYTE >= MAX_EFFECTIVE_BALANCE_INCREMENT * randByte) {
       return candidateIndex;
@@ -93,14 +95,14 @@ export function computeShuffledIndex(index: number, indexCount: number, seed: By
   let permuted = index;
   assert.lt(index, indexCount, "indexCount must be less than index");
   assert.lte(indexCount, 2 ** 40, "indexCount too big");
-  const _seed = seed.valueOf() as Uint8Array;
+  const _seed = seed;
   for (let i = 0; i < SHUFFLE_ROUND_COUNT; i++) {
     const pivot = Number(
-      bytesToBigInt(hash(Buffer.concat([_seed, intToBytes(i, 1)])).slice(0, 8)) % BigInt(indexCount)
+      bytesToBigInt(SHA256.digest(Buffer.concat([_seed, intToBytes(i, 1)])).slice(0, 8)) % BigInt(indexCount)
     );
     const flip = (pivot + indexCount - permuted) % indexCount;
     const position = Math.max(permuted, flip);
-    const source = hash(Buffer.concat([_seed, intToBytes(i, 1), intToBytes(Math.floor(position / 256), 4)]));
+    const source = SHA256.digest(Buffer.concat([_seed, intToBytes(i, 1), intToBytes(Math.floor(position / 256), 4)]));
     const byte = source[Math.floor((position % 256) / 8)];
     const bit = (byte >> position % 8) % 2;
     permuted = bit ? flip : permuted;
@@ -111,15 +113,15 @@ export function computeShuffledIndex(index: number, indexCount: number, seed: By
 /**
  * Return the randao mix at a recent [[epoch]].
  */
-export function getRandaoMix(state: allForks.BeaconState, epoch: Epoch): Bytes32 {
-  return state.randaoMixes[epoch % EPOCHS_PER_HISTORICAL_VECTOR];
+export function getRandaoMix(state: BeaconStateAllForks, epoch: Epoch): Bytes32 {
+  return state.randaoMixes.get(epoch % EPOCHS_PER_HISTORICAL_VECTOR);
 }
 
 /**
  * Return the seed at [[epoch]].
  */
-export function getSeed(state: allForks.BeaconState, epoch: Epoch, domainType: DomainType): Uint8Array {
+export function getSeed(state: BeaconStateAllForks, epoch: Epoch, domainType: DomainType): Uint8Array {
   const mix = getRandaoMix(state, epoch + EPOCHS_PER_HISTORICAL_VECTOR - MIN_SEED_LOOKAHEAD - 1);
 
-  return hash(Buffer.concat([domainType as Buffer, intToBytes(epoch, 8), mix.valueOf() as Uint8Array]));
+  return SHA256.digest(Buffer.concat([domainType as Buffer, intToBytes(epoch, 8), mix]));
 }

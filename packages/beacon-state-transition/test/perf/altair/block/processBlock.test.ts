@@ -9,7 +9,7 @@ import {
   PresetName,
   SYNC_COMMITTEE_SIZE,
 } from "@chainsafe/lodestar-params";
-import {allForks, CachedBeaconStateAllForks} from "../../../../src";
+import {allForks, CachedBeaconStateAllForks, CachedBeaconStateAltair} from "../../../../src";
 import {generatePerfTestCachedStateAltair, perfStateId} from "../../util";
 import {BlockAltairOpts, getBlockAltair} from "../../phase0/block/util";
 import {StateBlock} from "../../types";
@@ -31,7 +31,7 @@ import {StateBlock} from "../../types";
 //
 // ### Verifying signatures
 // Signature verification is done in bulk using batch BLS verification. Performance is proportional to the amount of
-// sigs to verify and the cost to construct the signature sets from TreeBacked data.
+// sigs to verify and the cost to construct the signature sets from TreeView data.
 //
 // - Same as phase0
 // - SyncAggregate sigs:     1 x agg (358 bits on avg) - TODO: assuming same participation as attestations
@@ -103,7 +103,7 @@ describe("altair processBlock", () => {
       id: `altair processBlock - ${perfStateId} ${id}`,
       before: () => {
         const state = generatePerfTestCachedStateAltair() as CachedBeaconStateAllForks;
-        const block = getBlockAltair(state, opts);
+        const block = getBlockAltair(state as CachedBeaconStateAltair, opts);
         state.hashTreeRoot();
         return {state, block};
       },

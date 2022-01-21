@@ -1,4 +1,4 @@
-import {Epoch, ValidatorIndex, allForks} from "@chainsafe/lodestar-types";
+import {Epoch, ValidatorIndex} from "@chainsafe/lodestar-types";
 import {intDiv} from "@chainsafe/lodestar-utils";
 import {
   DOMAIN_BEACON_ATTESTER,
@@ -8,6 +8,7 @@ import {
 } from "@chainsafe/lodestar-params";
 
 import {getSeed, unshuffleList} from "../../util";
+import {BeaconStateAllForks} from "../../types";
 
 /**
  * Readonly interface for IEpochShuffling.
@@ -56,7 +57,7 @@ export function computeCommitteeCount(activeValidatorCount: number): number {
 }
 
 export function computeEpochShuffling(
-  state: allForks.BeaconState,
+  state: BeaconStateAllForks,
   activeIndices: ValidatorIndex[],
   epoch: Epoch
 ): IEpochShuffling {

@@ -1,24 +1,29 @@
 import {join} from "node:path";
 import fs from "node:fs";
 
-import {CachedBeaconStateAllForks, allForks} from "@chainsafe/lodestar-beacon-state-transition";
+import {
+  CachedBeaconStateAllForks,
+  IEpochProcess,
+  BeaconStateAllForks,
+  beforeProcessEpoch,
+} from "@chainsafe/lodestar-beacon-state-transition";
 import {describeDirectorySpecTest} from "@chainsafe/lodestar-spec-test-util";
 import {ssz} from "@chainsafe/lodestar-types";
-import {TreeBacked} from "@chainsafe/ssz";
 import {ACTIVE_PRESET, ForkName} from "@chainsafe/lodestar-params";
 import {SPEC_TEST_LOCATION} from "../specTestVersioning";
-import {expectEqualBeaconState, inputTypeSszTreeBacked} from "../util";
+import {createCachedBeaconStateTest} from "../../utils/cachedBeaconState";
+import {expectEqualBeaconState, inputTypeSszTreeViewDU} from "../util";
 import {getConfig} from "./util";
 import {IBaseSpecTest} from "../type";
 
-export type EpochProcessFn = (state: CachedBeaconStateAllForks, epochProcess: allForks.IEpochProcess) => void;
+export type EpochProcessFn = (state: CachedBeaconStateAllForks, epochProcess: IEpochProcess) => void;
 
 /**
  * https://github.com/ethereum/consensus-specs/blob/dev/tests/formats/epoch_processing/README.md
  */
 type EpochProcessingStateTestCase = IBaseSpecTest & {
-  pre: allForks.BeaconState;
-  post: allForks.BeaconState;
+  pre: BeaconStateAllForks;
+  post: BeaconStateAllForks;
 };
 
 /**
@@ -33,18 +38,21 @@ export function epochProcessing(fork: ForkName, epochProcessFns: Record<string, 
       throw Error(`No epochProcessFn for ${testDir}`);
     }
 
-    describeDirectorySpecTest<EpochProcessingStateTestCase, allForks.BeaconState>(
+    describeDirectorySpecTest<EpochProcessingStateTestCase, BeaconStateAllForks>(
       `${ACTIVE_PRESET}/${fork}/epoch_processing/${testDir}`,
       join(rootDir, `${testDir}/pyspec_tests`),
       (testcase) => {
-        const stateTB = (testcase.pre as TreeBacked<allForks.BeaconState>).clone();
-        const state = allForks.createCachedBeaconState(getConfig(fork), stateTB);
-        const epochProcess = allForks.beforeProcessEpoch(state);
+        const stateTB = testcase.pre.clone();
+        const state = createCachedBeaconStateTest(stateTB, getConfig(fork));
+
+        const epochProcess = beforeProcessEpoch(state);
         epochProcessFn(state, epochProcess);
+        state.commit();
+
         return state;
       },
       {
-        inputTypes: inputTypeSszTreeBacked,
+        inputTypes: inputTypeSszTreeViewDU,
         sszTypes: {
           pre: ssz[fork].BeaconState,
           post: ssz[fork].BeaconState,

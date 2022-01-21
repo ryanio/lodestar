@@ -1,4 +1,3 @@
-import {ssz} from "@chainsafe/lodestar-types";
 import {SAFE_SLOTS_TO_IMPORT_OPTIMISTICALLY} from "@chainsafe/lodestar-params";
 import {
   CachedBeaconStateAllForks,
@@ -20,6 +19,7 @@ import {IStateRegenerator, RegenCaller} from "../regen";
 import {IBlsVerifier} from "../bls";
 import {FullyVerifiedBlock, PartiallyVerifiedBlock} from "./types";
 import {ExecutePayloadStatus} from "../../executionEngine/interface";
+import {byteArrayEquals} from "../../util/bytes";
 
 export type VerifyBlockModules = {
   bls: IBlsVerifier;
@@ -172,13 +172,7 @@ export async function verifyBlockStateTransition(
   let executionStatus: ExecutionStatus;
   if (executionPayloadEnabled) {
     // TODO: Handle better executePayload() returning error is syncing
-    const execResult = await chain.executionEngine.executePayload(
-      // executionPayload must be serialized as JSON and the TreeBacked structure breaks the baseFeePerGas serializer
-      // For clarity and since it's needed anyway, just send the struct representation at this level such that
-      // executePayload() can expect a regular JS object.
-      // TODO: If blocks are no longer TreeBacked, remove.
-      executionPayloadEnabled.valueOf() as typeof executionPayloadEnabled
-    );
+    const execResult = await chain.executionEngine.executePayload(executionPayloadEnabled);
 
     switch (execResult.status) {
       case ExecutePayloadStatus.VALID:
@@ -267,7 +261,7 @@ export async function verifyBlockStateTransition(
   }
 
   // Check state root matches
-  if (!ssz.Root.equals(block.message.stateRoot, postState.tree.root)) {
+  if (!byteArrayEquals(block.message.stateRoot, postState.hashTreeRoot())) {
     throw new BlockError(block, {code: BlockErrorCode.INVALID_STATE_ROOT, preState, postState});
   }
 

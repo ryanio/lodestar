@@ -1,7 +1,9 @@
 import {itBench} from "@dapplion/benchmark";
-import {allForks, phase0, CachedBeaconStatePhase0, CachedBeaconStateAllForks} from "../../../../src";
+import {phase0, CachedBeaconStatePhase0, CachedBeaconStateAllForks} from "../../../../src";
 import {generatePerfTestCachedStatePhase0, numValidators} from "../../util";
 import {StateEpoch} from "../../types";
+import {IEpochProcess} from "../../../../src/types";
+import {beforeProcessEpoch} from "../../../../src/cache/beforeProcessEpoch";
 
 // PERF: Cost 'proportional' to only validators that are slashed. For mainnet conditions:
 // - indicesToSlash: max len is 8704. But it's very unlikely since it would require all validators on the same
@@ -40,10 +42,10 @@ function getProcessSlashingsTestData(
   indicesToSlashLen: number
 ): {
   state: CachedBeaconStateAllForks;
-  epochProcess: allForks.IEpochProcess;
+  epochProcess: IEpochProcess;
 } {
   const state = generatePerfTestCachedStatePhase0({goBackOneSlot: true});
-  const epochProcess = allForks.beforeProcessEpoch(state);
+  const epochProcess = beforeProcessEpoch(state as CachedBeaconStateAllForks);
 
   epochProcess.indicesToSlash = linspace(indicesToSlashLen);
 

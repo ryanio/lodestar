@@ -2,7 +2,6 @@
  * @module chain/stateTransition/util
  */
 
-export * from "./aggregationBits";
 export * from "./aggregator";
 export * from "./array";
 export * from "./attestation";

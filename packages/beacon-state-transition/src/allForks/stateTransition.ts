@@ -6,11 +6,12 @@ import * as altair from "../altair";
 import * as bellatrix from "../bellatrix";
 import {IBeaconStateTransitionMetrics} from "../metrics";
 import {verifyProposerSignature} from "./signatureSets";
-import {beforeProcessEpoch, IEpochProcess, afterProcessEpoch} from "./util";
-import {CachedBeaconStateAllForks, CachedBeaconStatePhase0, CachedBeaconStateAltair} from "../types";
+import {CachedBeaconStateAllForks, CachedBeaconStatePhase0, CachedBeaconStateAltair, IEpochProcess} from "../types";
 import {processSlot} from "./slot";
 import {computeEpochAtSlot} from "../util";
 import {toHexString} from "@chainsafe/ssz";
+import {afterProcessEpoch} from "../cache/afterProcessEpoch";
+import {beforeProcessEpoch} from "../cache/beforeProcessEpoch";
 
 type StateAllForks = CachedBeaconStateAllForks;
 type StatePhase0 = CachedBeaconStatePhase0;
@@ -54,8 +55,8 @@ export function stateTransition(
 
   let postState = state.clone();
 
-  // Turn caches into a data-structure optimized for fast writes
-  postState.setStateCachesAsTransient();
+  // State is already a ViewDU, which won't commit changes. Equivalent to .setStateCachesAsTransient()
+  // postState.setStateCachesAsTransient();
 
   // Process slots (including those with no blocks) since block.
   // Includes state upgrades
@@ -71,19 +72,20 @@ export function stateTransition(
   // Process block
   processBlock(postState, block, options, metrics);
 
+  // Apply changes to state, must do before hashing. Note: .hashTreeRoot() automatically commits() too
+  postState.commit();
+
   // Verify state root
   if (verifyStateRoot) {
-    if (!ssz.Root.equals(block.stateRoot, postState.tree.root)) {
+    const stateRoot = postState.hashTreeRoot();
+    if (!ssz.Root.equals(block.stateRoot, stateRoot)) {
       throw new Error(
         `Invalid state root at slot ${block.slot}, expected=${toHexString(block.stateRoot)}, actual=${toHexString(
-          postState.tree.root
+          stateRoot
         )}`
       );
     }
   }
-
-  // Turn caches into a data-structure optimized for hashing and structural sharing
-  postState.setStateCachesAsPersistent();
 
   return postState;
 }
@@ -122,13 +124,13 @@ export function processSlots(
 ): CachedBeaconStateAllForks {
   let postState = state.clone();
 
-  // Turn caches into a data-structure optimized for fast writes
-  postState.setStateCachesAsTransient();
+  // State is already a ViewDU, which won't commit changes. Equivalent to .setStateCachesAsTransient()
+  // postState.setStateCachesAsTransient();
 
   postState = processSlotsWithTransientCache(postState, slot, metrics);
 
-  // Turn caches into a data-structure optimized for hashing and structural sharing
-  postState.setStateCachesAsPersistent();
+  // Apply changes to state, must do before hashing
+  postState.commit();
 
   return postState;
 }

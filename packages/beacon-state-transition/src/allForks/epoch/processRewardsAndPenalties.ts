@@ -1,7 +1,9 @@
-import {CachedBeaconStateAltair, CachedBeaconStatePhase0, CachedBeaconStateAllForks, IEpochProcess} from "../../types";
 import {ForkName, GENESIS_EPOCH} from "@chainsafe/lodestar-params";
+import {ssz} from "@chainsafe/lodestar-types";
+import {IEpochProcess} from "../../cache/epochProcess";
 import {getAttestationDeltas as getAttestationDeltasPhase0} from "../../phase0/epoch/getAttestationDeltas";
 import {getRewardsAndPenalties as getRewardsPenaltiesAltair} from "../../altair/epoch/getRewardsAndPenalties";
+import {CachedBeaconStateAllForks, CachedBeaconStatePhase0, CachedBeaconStateAltair} from "../../cache/stateCache";
 
 /**
  * Iterate over all validator and compute rewards and penalties to apply to balances.
@@ -9,9 +11,9 @@ import {getRewardsAndPenalties as getRewardsPenaltiesAltair} from "../../altair/
  * PERF: Cost = 'proportional' to $VALIDATOR_COUNT. Extra work is done per validator the more status flags
  * are true, worst case: FLAG_UNSLASHED + FLAG_ELIGIBLE_ATTESTER + FLAG_PREV_*
  */
-export function processRewardsAndPenaltiesAllForks<T extends CachedBeaconStateAllForks>(
+export function processRewardsAndPenaltiesAllForks(
   fork: ForkName,
-  state: T,
+  state: CachedBeaconStateAllForks,
   epochProcess: IEpochProcess
 ): void {
   // No rewards are applied at the end of `GENESIS_EPOCH` because rewards are for work done in the previous epoch
@@ -24,13 +26,13 @@ export function processRewardsAndPenaltiesAllForks<T extends CachedBeaconStateAl
       ? getAttestationDeltasPhase0(state as CachedBeaconStatePhase0, epochProcess)
       : getRewardsPenaltiesAltair(state as CachedBeaconStateAltair, epochProcess);
 
-  const deltas: number[] = [];
+  const balances = state.balances.getAll();
+
   for (let i = 0, len = rewards.length; i < len; i++) {
-    deltas.push(rewards[i] - penalties[i]);
+    balances[i] += rewards[i] - penalties[i];
   }
 
-  // important: do not change state one balance at a time
-  // set them all at once, constructing the tree in one go
+  // important: do not change state one balance at a time. Set them all at once, constructing the tree in one go
   // cache the balances array, too
-  epochProcess.balances = state.balanceList.updateAll(deltas);
+  state.balances = ssz.phase0.Balances.toViewDU(balances);
 }

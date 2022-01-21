@@ -1,11 +1,14 @@
-import {List, readonlyValues, TreeBacked, Vector} from "@chainsafe/ssz";
+import {ByteVectorType, CompositeViewDU, ListCompositeType} from "@chainsafe/ssz";
 import {Root, ssz} from "@chainsafe/lodestar-types";
 import {IChainForkConfig} from "@chainsafe/lodestar-config";
 import {bytesToInt} from "@chainsafe/lodestar-utils";
 import {Db, Bucket, Repository, IKeyValue, IDbMetrics} from "@chainsafe/lodestar-db";
 
+// TODO: Review where is best to put this type
+export type DepositTree = CompositeViewDU<ListCompositeType<ByteVectorType>>;
+
 export class DepositDataRootRepository extends Repository<number, Root> {
-  private depositRootTree?: TreeBacked<List<Root>>;
+  private depositRootTree?: DepositTree;
 
   constructor(config: IChainForkConfig, db: Db, metrics?: IDbMetrics) {
     super(config, db, Bucket.index_depositDataRoot, ssz.Root, metrics);
@@ -24,19 +27,19 @@ export class DepositDataRootRepository extends Repository<number, Root> {
   async put(id: number, value: Root): Promise<void> {
     const depositRootTree = await this.getDepositRootTree();
     await super.put(id, value);
-    depositRootTree[id] = value as TreeBacked<Root>;
+    depositRootTree.set(id, value);
   }
 
   async batchPut(items: IKeyValue<number, Root>[]): Promise<void> {
     const depositRootTree = await this.getDepositRootTree();
     await super.batchPut(items);
     for (const {key, value} of items) {
-      depositRootTree[key] = value as TreeBacked<Root>;
+      depositRootTree.set(key, value);
     }
   }
 
-  async putList(list: List<Root>): Promise<void> {
-    await this.batchPut(Array.from(readonlyValues(list), (value, key) => ({key, value})));
+  async putList(roots: Root[]): Promise<void> {
+    await this.batchPut(roots.map((root, index) => ({key: index, value: root})));
   }
 
   async batchPutValues(values: {index: number; root: Root}[]): Promise<void> {
@@ -48,25 +51,16 @@ export class DepositDataRootRepository extends Repository<number, Root> {
     );
   }
 
-  async getTreeBacked(depositIndex: number): Promise<TreeBacked<List<Root>>> {
-    const depositRootTree = await this.getDepositRootTree();
-    const tree = depositRootTree.clone();
-    let maxIndex = tree.length - 1;
-    if (depositIndex > maxIndex) {
-      throw new Error(`Cannot get tree for unseen deposits: requested ${depositIndex}, last seen ${maxIndex}`);
-    }
-    while (maxIndex > depositIndex) {
-      tree.pop();
-      maxIndex = tree.length - 1;
-    }
-    return tree;
-  }
-
-  async getDepositRootTree(): Promise<TreeBacked<List<Root>>> {
+  async getDepositRootTree(): Promise<DepositTree> {
     if (!this.depositRootTree) {
-      const values = (await this.values()) as List<Vector<number>>;
-      this.depositRootTree = ssz.phase0.DepositDataRootList.createTreeBackedFromStruct(values);
+      const values = await this.values();
+      this.depositRootTree = ssz.phase0.DepositDataRootList.toViewDU(values);
     }
     return this.depositRootTree;
+  }
+
+  async getDepositRootTreeAtIndex(depositIndex: number): Promise<DepositTree> {
+    const depositRootTree = await this.getDepositRootTree();
+    return depositRootTree.sliceTo(depositIndex);
   }
 }

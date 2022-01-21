@@ -10,6 +10,8 @@ import {beforeValue, getNetworkCachedState, LazyValue} from "../../util";
 import {processParticipationRecordUpdates} from "../../../../src/phase0/epoch/processParticipationRecordUpdates";
 import {StateEpoch} from "../../types";
 import {phase0State} from "../../params";
+import {beforeProcessEpoch} from "../../../../src/cache/beforeProcessEpoch";
+import {afterProcessEpoch} from "../../../../src/cache/afterProcessEpoch";
 
 const slot = computeStartSlotAtEpoch(phase0State.epoch) - 1;
 const stateId = `${phase0State.network}_e${phase0State.epoch}`;
@@ -29,9 +31,9 @@ describe(`phase0 processEpoch - ${stateId}`, () => {
     id: `phase0 processEpoch - ${stateId}`,
     beforeEach: () => stateOg.value.clone() as CachedBeaconStateAllForks,
     fn: (state) => {
-      const epochProcess = allForks.beforeProcessEpoch(state);
+      const epochProcess = beforeProcessEpoch(state);
       phase0.processEpoch(state as CachedBeaconStatePhase0, epochProcess);
-      allForks.afterProcessEpoch(state, epochProcess);
+      afterProcessEpoch(state, epochProcess);
       // Simulate root computation through the next block to account for changes
       state.hashTreeRoot();
     },
@@ -46,7 +48,7 @@ describe(`phase0 processEpoch - ${stateId}`, () => {
 });
 
 function benchmarkPhase0EpochSteps(stateOg: LazyValue<CachedBeaconStateAllForks>, stateId: string): void {
-  const epochProcess = beforeValue(() => allForks.beforeProcessEpoch(stateOg.value));
+  const epochProcess = beforeValue(() => beforeProcessEpoch(stateOg.value));
 
   // Functions in same order as phase0.processEpoch()
   // Rough summary as of Aug 5th 2021
@@ -68,7 +70,7 @@ function benchmarkPhase0EpochSteps(stateOg: LazyValue<CachedBeaconStateAllForks>
   itBench({
     id: `${stateId} - phase0 beforeProcessEpoch`,
     fn: () => {
-      allForks.beforeProcessEpoch(stateOg.value);
+      beforeProcessEpoch(stateOg.value);
     },
   });
 
@@ -141,11 +143,11 @@ function benchmarkPhase0EpochSteps(stateOg: LazyValue<CachedBeaconStateAllForks>
     // Compute a state and epochProcess after running processEpoch() since those values are mutated
     before: () => {
       const state = stateOg.value.clone();
-      const epochProcessAfter = allForks.beforeProcessEpoch(state);
+      const epochProcessAfter = beforeProcessEpoch(state);
       phase0.processEpoch(state as CachedBeaconStatePhase0, epochProcessAfter);
       return {state, epochProcess: epochProcessAfter};
     },
     beforeEach: ({state, epochProcess}) => ({state: state.clone(), epochProcess}),
-    fn: ({state, epochProcess}) => allForks.afterProcessEpoch(state, epochProcess),
+    fn: ({state, epochProcess}) => afterProcessEpoch(state, epochProcess),
   });
 }

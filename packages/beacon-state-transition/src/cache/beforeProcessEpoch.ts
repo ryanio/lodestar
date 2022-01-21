@@ -1,4 +1,4 @@
-import {Epoch, ValidatorIndex, allForks, phase0} from "@chainsafe/lodestar-types";
+import {ValidatorIndex} from "@chainsafe/lodestar-types";
 import {intDiv} from "@chainsafe/lodestar-utils";
 import {
   EFFECTIVE_BALANCE_INCREMENT,
@@ -8,7 +8,7 @@ import {
   MAX_EFFECTIVE_BALANCE,
 } from "@chainsafe/lodestar-params";
 
-import {isActiveValidator, newZeroedArray} from "../../util";
+import {isActiveValidator, newZeroedArray} from "../util";
 import {
   IAttesterStatus,
   createIAttesterStatus,
@@ -21,118 +21,13 @@ import {
   FLAG_CURR_SOURCE_ATTESTER,
   FLAG_CURR_TARGET_ATTESTER,
   FLAG_CURR_HEAD_ATTESTER,
-} from "./attesterStatus";
-import {IEpochStakeSummary} from "./epochStakeSummary";
-import {CachedBeaconState} from "./cachedBeaconState";
-import {statusProcessEpoch} from "../../phase0/epoch/processPendingAttestations";
-import {computeBaseRewardPerIncrement} from "../../altair/util/misc";
-import {readonlyValuesListOfLeafNodeStruct} from "@chainsafe/ssz";
+} from "../allForks/util";
+import {CachedBeaconStateAllForks, CachedBeaconStatePhase0, CachedBeaconStateAltair} from "./stateCache";
+import {computeBaseRewardPerIncrement} from "../util/altair";
+import {statusProcessEpoch} from "../phase0/epoch/processPendingAttestations";
+import {IEpochProcess} from "./epochProcess";
 
-/**
- * Pre-computed disposable data to process epoch transitions faster at the cost of more memory.
- *
- * The AttesterStatus (and FlatValidator under status.validator) objects and
- * EpochStakeSummary are tracked in the IEpochProcess and made available as additional context in the
- * epoch transition.
- */
-export interface IEpochProcess {
-  prevEpoch: Epoch;
-  currentEpoch: Epoch;
-  /**
-   * This is sum of active validators' balance in eth.
-   */
-  totalActiveStakeByIncrement: number;
-  /** For altair */
-  baseRewardPerIncrement: number;
-  prevEpochUnslashedStake: IEpochStakeSummary;
-  currEpochUnslashedTargetStakeByIncrement: number;
-  /**
-   * Indices which will receive the slashing penalty
-   * ```
-   * v.withdrawableEpoch === currentEpoch + EPOCHS_PER_SLASHINGS_VECTOR / 2
-   * ```
-   * There's a practical limitation in number of possible validators slashed by epoch, which would share the same
-   * withdrawableEpoch. Note that after some count exitChurn would advance the withdrawableEpoch.
-   * ```
-   * maxSlashedPerSlot = SLOTS_PER_EPOCH * (MAX_PROPOSER_SLASHINGS + MAX_ATTESTER_SLASHINGS * bits)
-   * ```
-   * For current mainnet conditions (bits = 128) that's `maxSlashedPerSlot = 8704`.
-   * For less than 327680 validators, churnLimit = 4 (minimum possible)
-   * For exitChurn to overtake the slashing delay, there should be
-   * ```
-   * churnLimit * (EPOCHS_PER_SLASHINGS_VECTOR / 2 - 1 - MAX_SEED_LOOKAHEAD)
-   * ```
-   * For mainnet conditions that's 16364 validators. So the limiting factor is the max operations on the block. Note
-   * that on average indicesToSlash must contain churnLimit validators (4), but it can spike to a max of 8704 in a
-   * single epoch if there haven't been exits in a while and there's a massive attester slashing at once of validators
-   * that happen to be in the same committee, which is very unlikely.
-   */
-  indicesToSlash: ValidatorIndex[];
-  /**
-   * Indices of validators that just joinned and will be eligible for the active queue.
-   * ```
-   * v.activationEligibilityEpoch === FAR_FUTURE_EPOCH && v.effectiveBalance === MAX_EFFECTIVE_BALANCE
-   * ```
-   * All validators in indicesEligibleForActivationQueue get activationEligibilityEpoch set. So it can only include
-   * validators that have just joinned the registry through a valid full deposit(s).
-   * ```
-   * max indicesEligibleForActivationQueue = SLOTS_PER_EPOCH * MAX_DEPOSITS
-   * ```
-   * For mainnet spec = 512
-   */
-  indicesEligibleForActivationQueue: ValidatorIndex[];
-  /**
-   * Indices of validators that may become active once churn and finaly allow.
-   * ```
-   * v.activationEpoch === FAR_FUTURE_EPOCH && v.activationEligibilityEpoch <= currentEpoch
-   * ```
-   * Many validators could be on indicesEligibleForActivation, but only up to churnLimit will be activated.
-   * For less than 327680 validators, churnLimit = 4 (minimum possible), so max processed is 4.
-   */
-  indicesEligibleForActivation: ValidatorIndex[];
-  /**
-   * Indices of validators that will be ejected due to low balance.
-   * ```
-   * status.active && v.exitEpoch === FAR_FUTURE_EPOCH && v.effectiveBalance <= config.EJECTION_BALANCE
-   * ```
-   * Potentially the entire validator set could be added to indicesToEject, and all validators in the array will have
-   * their validator object mutated. Exit queue churn delays exit, but the object is mutated immediately.
-   */
-  indicesToEject: ValidatorIndex[];
-
-  statuses: IAttesterStatus[];
-  balances?: number[];
-  /**
-   * Active validator indices for currentEpoch + 2.
-   * This is only used in `afterProcessEpoch` to compute epoch shuffling, it's not efficient to calculate it at that time
-   * since it requires 1 loop through validator.
-   * | epoch process fn                 | nextEpochTotalActiveBalance action |
-   * | -------------------------------- | ---------------------------------- |
-   * | beforeProcessEpoch               | calculate during the validator loop|
-   * | afterEpochProcess                | read it                            |
-   */
-  nextEpochShufflingActiveValidatorIndices: ValidatorIndex[];
-  /**
-   * Altair specific, this is total active balances for the next epoch.
-   * This is only used in `afterProcessEpoch` to compute base reward and sync participant reward.
-   * It's not efficient to calculate it at that time since it requires looping through all active validators,
-   * so we should calculate it during `processEffectiveBalancesUpdate` which gives us updated effective balance.
-   * | epoch process fn                 | nextEpochTotalActiveBalance action |
-   * | -------------------------------- | ---------------------------------- |
-   * | beforeProcessEpoch               | initialize as BigInt(0)            |
-   * | processEffectiveBalancesUpdate   | calculate during the loop          |
-   * | afterEpochProcess                | read it                            |
-   */
-  nextEpochTotalActiveBalanceByIncrement: number;
-
-  /**
-   * Track by validator index if it's active in the next epoch.
-   * Used in `processEffectiveBalanceUpdates` to save one loop over validators after epoch process.
-   */
-  isActiveNextEpoch: boolean[];
-}
-
-export function beforeProcessEpoch<T extends allForks.BeaconState>(state: CachedBeaconState<T>): IEpochProcess {
+export function beforeProcessEpoch(state: CachedBeaconStateAllForks): IEpochProcess {
   const {config, epochCtx} = state;
   const forkName = config.getForkName(state.slot);
   const currentEpoch = epochCtx.currentShuffling.epoch;
@@ -157,7 +52,7 @@ export function beforeProcessEpoch<T extends allForks.BeaconState>(state: Cached
   // To optimize memory each validator node in `state.validators` is represented with a special node type
   // `BranchNodeStruct` that represents the data as struct internally. This utility grabs the struct data directrly
   // from the nodes without any extra transformation. The returned `validators` array contains native JS objects.
-  const validators = readonlyValuesListOfLeafNodeStruct(state.validators);
+  const validators = state.validators.getAllReadonlyValues();
   const validatorCount = validators.length;
 
   // Clone before being mutated in processEffectiveBalanceUpdates
@@ -264,44 +159,44 @@ export function beforeProcessEpoch<T extends allForks.BeaconState>(state: Cached
   );
 
   if (forkName === ForkName.phase0) {
-    const statePhase0 = (state as unknown) as CachedBeaconState<phase0.BeaconState>;
     statusProcessEpoch(
-      statePhase0,
+      state as CachedBeaconStatePhase0,
       statuses,
-      statePhase0.previousEpochAttestations,
+      (state as CachedBeaconStatePhase0).previousEpochAttestations.getAllReadonly(),
       prevEpoch,
       FLAG_PREV_SOURCE_ATTESTER,
       FLAG_PREV_TARGET_ATTESTER,
       FLAG_PREV_HEAD_ATTESTER
     );
     statusProcessEpoch(
-      statePhase0,
+      state as CachedBeaconStatePhase0,
       statuses,
-      statePhase0.currentEpochAttestations,
+      (state as CachedBeaconStatePhase0).currentEpochAttestations.getAllReadonly(),
       currentEpoch,
       FLAG_CURR_SOURCE_ATTESTER,
       FLAG_CURR_TARGET_ATTESTER,
       FLAG_CURR_HEAD_ATTESTER
     );
   } else {
-    state.previousEpochParticipation.forEachStatus((participationFlags, i) => {
+    const previousEpochParticipation = (state as CachedBeaconStateAltair).previousEpochParticipation.getAll();
+    for (let i = 0; i < previousEpochParticipation.length; i++) {
       const status = statuses[i];
       // this is required to pass random spec tests in altair
       if (isActivePrevEpoch[i]) {
-        status.flags |=
-          // FLAG_PREV are indexes [0,1,2]
-          status.flags |= participationFlags;
+        // FLAG_PREV are indexes [0,1,2]
+        status.flags |= previousEpochParticipation[i];
       }
-    });
-    state.currentEpochParticipation.forEachStatus((participationFlags, i) => {
+    }
+
+    const currentEpochParticipation = (state as CachedBeaconStateAltair).currentEpochParticipation.getAll();
+    for (let i = 0; i < currentEpochParticipation.length; i++) {
       const status = statuses[i];
       // this is required to pass random spec tests in altair
       if (status.active) {
-        status.flags |=
-          // FLAG_CURR are indexes [3,4,5], so shift by 3
-          status.flags |= participationFlags << 3;
+        // FLAG_PREV are indexes [3,4,5], so shift by 3
+        status.flags |= currentEpochParticipation[i] << 3;
       }
-    });
+    }
   }
 
   let prevSourceUnslStake = 0;
@@ -360,5 +255,8 @@ export function beforeProcessEpoch<T extends allForks.BeaconState>(state: Cached
     nextEpochTotalActiveBalanceByIncrement: 0,
     isActiveNextEpoch,
     statuses,
+
+    // TODO: Is this necessary?
+    balances: state.balances.getAll(),
   };
 }
