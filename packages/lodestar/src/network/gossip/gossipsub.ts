@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import Gossipsub from "libp2p-gossipsub";
+import {messageIdToString} from "libp2p-gossipsub/src/utils/messageIdToString";
+import SHA256 from "@chainsafe/as-sha256";
+import {toHexString} from "@chainsafe/ssz";
 import {ERR_TOPIC_VALIDATOR_IGNORE, ERR_TOPIC_VALIDATOR_REJECT} from "libp2p-gossipsub/src/constants";
 import {InMessage} from "libp2p-interfaces/src/pubsub";
 import Libp2p from "libp2p";
@@ -90,6 +93,7 @@ export class Eth2Gossipsub extends Gossipsub {
       Dlazy: 6,
       scoreParams: computeGossipPeerScoreParams(modules),
       scoreThresholds: gossipScoreThresholds,
+      fastMsgIdFn: (msg: InMessage) => toHexString(SHA256.digest(msg.data)),
     });
     const {config, logger, metrics, signal, gossipHandlers} = modules;
     this.config = config;
@@ -147,6 +151,14 @@ export class Eth2Gossipsub extends Gossipsub {
       this.msgIdCache.set(msg, msgId);
     }
     return msgId;
+  }
+
+  /**
+   * Get cached message id string if we have it.
+   */
+  getCachedMsgIdStr(msg: InMessage): string | undefined {
+    const cachedMsgId = this.msgIdCache.get(msg);
+    return cachedMsgId ? messageIdToString(cachedMsgId) : undefined;
   }
 
   // no need to overwrite _processMessages thanks to this https://github.com/libp2p/js-libp2p-interfaces/blob/libp2p-interfaces%404.0.4/packages/interfaces/src/pubsub/index.js#L367
