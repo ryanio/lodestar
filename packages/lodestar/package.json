@@ -80,6 +80,7 @@
     "@chainsafe/as-sha256": "^0.2.4",
     "@ethersproject/abi": "^5.0.0",
     "@types/datastore-level": "^3.0.0",
+    "datastore-core": "^6.0.0",
     "bl": "^5.0.0",
     "buffer-xor": "^2.0.2",
     "cross-fetch": "^3.1.4",
