@@ -93,7 +93,7 @@
     "interface-datastore": "^5.1.2",
     "it-all": "^1.0.4",
     "it-pipe": "^1.1.0",
-    "libp2p": "https://github.com/libp2p/js-libp2p",
+    "libp2p": "^0.36.2",
     "libp2p-bootstrap": "^0.14.0",
     "libp2p-gossipsub": "^0.13.0",
     "libp2p-interfaces": "^4.0.4",
