@@ -4214,10 +4214,10 @@ datastore-core@^5.0.0:
     it-take "^1.0.1"
     uint8arrays "^3.0.0"
 
-datastore-core@^6.0.0:
-  version "6.0.7"
-  resolved "https://registry.yarnpkg.com/datastore-core/-/datastore-core-6.0.7.tgz#f06bc2bbd7a7fc4365f7587662bb22a768876431"
-  integrity sha512-y+RfRV3FXZK2kpHTwuoyIod3mHtleW/tDx5ilsn9cdIflxQb5rWrRc3GzRwPOnq2oEtN1W019BZOwC5h6p6g6Q==
+datastore-core@^7.0.0:
+  version "7.0.0"
+  resolved "https://registry.yarnpkg.com/datastore-core/-/datastore-core-7.0.0.tgz#1dff18ea0504692e63ab818e6ac9e448cac0727d"
+  integrity sha512-FdudjeH+GHjbuU8X1mIKIv8uHAErF6qtjqWFJiVKOdITk6KdiSKis4Hsfu80RWDEFQ9l9s47XIVf5FMKTtoeWA==
   dependencies:
     debug "^4.1.1"
     err-code "^3.0.1"
@@ -4231,10 +4231,10 @@ datastore-core@^6.0.0:
     it-take "^1.0.1"
     uint8arrays "^3.0.0"
 
-datastore-core@^7.0.0:
-  version "7.0.0"
-  resolved "https://registry.yarnpkg.com/datastore-core/-/datastore-core-7.0.0.tgz#1dff18ea0504692e63ab818e6ac9e448cac0727d"
-  integrity sha512-FdudjeH+GHjbuU8X1mIKIv8uHAErF6qtjqWFJiVKOdITk6KdiSKis4Hsfu80RWDEFQ9l9s47XIVf5FMKTtoeWA==
+datastore-core@^7.0.1:
+  version "7.0.1"
+  resolved "https://registry.yarnpkg.com/datastore-core/-/datastore-core-7.0.1.tgz#f50f30bb55474a569118d41bba6052896b096aec"
+  integrity sha512-TrV0PRtwwDo2OfzYpnVQmVgDc4HwtpYkzb6da5GZxKElZN7eDT5mBtrkVbXbyTn+Y2+WPiMBm6/KbJD7p0TBfA==
   dependencies:
     debug "^4.1.1"
     err-code "^3.0.1"
