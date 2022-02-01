@@ -1,6 +1,6 @@
 import {BaseDatastore} from "datastore-core";
 import LevelDatastore from "datastore-level";
-import {Key} from "interface-datastore";
+import {Key, KeyQuery, Query, Options, Pair} from "interface-datastore";
 
 type MemoryItem = {
   lastAccessedMs: number;
@@ -122,6 +122,23 @@ export class Eth2PeerDataStore extends BaseDatastore {
   async delete(key: Key): Promise<void> {
     this._memoryDatastore.delete(key.toString());
     await this._dbDatastore.delete(key);
+  }
+
+  async *_all(q: Query, options?: Options): AsyncIterable<Pair> {
+    for (const [key, value] of this._memoryDatastore.entries()) {
+      yield {
+        key: new Key(key),
+        value: value.data,
+      };
+    }
+    yield* this._dbDatastore.query(q, options);
+  }
+
+  async *_allKeys(q: KeyQuery, options?: Options): AsyncIterable<Key> {
+    for (const key of this._memoryDatastore.keys()) {
+      yield new Key(key);
+    }
+    yield* this._dbDatastore.queryKeys(q, options);
   }
 
   private async _addDirtyItem(keyStr: string): Promise<void> {
