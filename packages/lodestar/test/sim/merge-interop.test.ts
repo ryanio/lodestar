@@ -39,7 +39,7 @@ import {bytesToData, dataToBytes, quantityToNum} from "../../src/eth1/provider/u
 
 // BELLATRIX_EPOCH will happen at 2 sec * 8 slots = 16 sec
 // 10 ttd / 2 difficulty per block = 5 blocks * 5 sec = 25 sec
-const terminalTotalDifficultyPreMerge = 20;
+const terminalTotalDifficultyPreMerge = 10;
 const TX_SCENARIOS = process.env.TX_SCENARIOS?.split(",") || [];
 
 describe("executionEngine / ExecutionEngineHttp", function () {
@@ -79,6 +79,9 @@ describe("executionEngine / ExecutionEngineHttp", function () {
     gethProc.stdout.on("data", (chunk) => {
       const str = Buffer.from(chunk).toString("utf8");
       process.stdout.write(`EL ${gethProc.pid}: ${str}`); // str already contains a new line. console.log adds a new line
+      if (str.includes("Please enter the 0x-prefixed private key to unlock")) {
+        gethProc.stdin.write("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8\n");
+      }
     });
     gethProc.stderr.on("data", (chunk) => {
       const str = Buffer.from(chunk).toString("utf8");
